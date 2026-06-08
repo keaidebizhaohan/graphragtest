@@ -1,0 +1,58 @@
+2026-06-08 16:35:45.0593 - WARNING - graphrag.query.llm.text_utils - Error decoding faulty json, attempting repair
+2026-06-08 16:36:04.0032 - INFO - graphrag_llm.metrics.log_metrics_writer - Metrics for openai/deepseek-ai/DeepSeek-V3: {
+  "attempted_request_count": 2,
+  "successful_response_count": 2,
+  "failed_response_count": 0,
+  "failure_rate": 0.0,
+  "requests_with_retries": 0,
+  "retries": 0,
+  "retry_rate": 0.0,
+  "compute_duration_seconds": 19.0325927734375,
+  "compute_duration_per_response_seconds": 19.0325927734375,
+  "cache_hit_rate": 0.0,
+  "streaming_responses": 1,
+  "responses_with_tokens": 1,
+  "prompt_tokens": 5464,
+  "completion_tokens": 353,
+  "total_tokens": 5817,
+  "tokens_per_response": 5817.0,
+  "cost_per_response": 0.0
+}
+2026-06-08 16:38:10.0235 - INFO - graphrag_llm.metrics.log_metrics_writer - Metrics for openai/deepseek-ai/DeepSeek-V3: {
+  "attempted_request_count": 2,
+  "successful_response_count": 2,
+  "failed_response_count": 0,
+  "failure_rate": 0.0,
+  "requests_with_retries": 0,
+  "retries": 0,
+  "retry_rate": 0.0,
+  "compute_duration_seconds": 15.221301078796387,
+  "compute_duration_per_response_seconds": 15.221301078796387,
+  "cache_hit_rate": 0.0,
+  "streaming_responses": 1,
+  "responses_with_tokens": 1,
+  "prompt_tokens": 5473,
+  "completion_tokens": 376,
+  "total_tokens": 5849,
+  "tokens_per_response": 5849.0,
+  "cost_per_response": 0.0
+}
+2026-06-08 16:42:02.0234 - INFO - graphrag_llm.metrics.log_metrics_writer - Metrics for openai/deepseek-ai/DeepSeek-V3: {
+  "attempted_request_count": 2,
+  "successful_response_count": 2,
+  "failed_response_count": 0,
+  "failure_rate": 0.0,
+  "requests_with_retries": 0,
+  "retries": 0,
+  "retry_rate": 0.0,
+  "compute_duration_seconds": 16.618141889572144,
+  "compute_duration_per_response_seconds": 16.618141889572144,
+  "cache_hit_rate": 0.0,
+  "streaming_responses": 1,
+  "responses_with_tokens": 1,
+  "prompt_tokens": 5478,
+  "completion_tokens": 331,
+  "total_tokens": 5809,
+  "tokens_per_response": 5809.0,
+  "cost_per_response": 0.0
+}

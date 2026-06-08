@@ -2,32 +2,31 @@
 ### For a full list of available settings, see https://microsoft.github.io/graphrag/config/yaml/
 
 ### LLM settings ###
-### LLM settings ###
 completion_models:
   default_completion_model:
-    model_provider: openai            # DeepSeek 兼容 OpenAI 格式
-    model: deepseek-v4-pro             # 填入 DeepSeek 官方模型名
+    model_provider: openai
+    model: deepseek-ai/DeepSeek-V3
     auth_method: api_key
-    api_key: ${GRAPHRAG_API_KEY}      # 自动读取 .env 里的 DeepSeek Key
-    api_base: https://api.deepseek.com/v1
+    api_key: ${GRAPHRAG_API_KEY}
+    api_base: https://api.siliconflow.cn/v1
 
-    # ======= 核心：手动添加以下参数来限制并发，防止 DeepSeek 报错 =======
-    concurrent_requests: 2             # 严格限制并发请求数（默认通常是 16 以上，很容易冲垮 DeepSeek，改成 2 甚至 1）
-    requests_per_minute: 60            # 每分钟最多请求次数（根据你的 DeepSeek 账户层级调整，限流严重就调小）
-    tokens_per_minute: 40000           # 每分钟最多 Token 数
-    # ===================================================================
+    # ======= 核心：添加这一行绕过强 JSON 校验 =======
+    response_format: text
+    # ===============================================
 
+    concurrent_requests: 2
     retry:
       type: exponential_backoff
-      max_retries: 10                  # 顺便把重试次数加大，遇到网络波动会自动多试几次
 
 embedding_models:
   default_embedding_model:
-    model_provider: openai            # 阿里灵积/百炼也全面兼容 OpenAI 格式
-    model: text-embedding-v3          # 核心：这是阿里目前最强的文本向量模型
+    model_provider: openai
+    # ======= 终极核心修改：换用支持 8192 超长 Token 的 M3 模型 =======
+    model: BAAI/bge-m3
     auth_method: api_key
-    api_key: ${ALIYUN_API_KEY}        # 自动读取 .env 里的阿里 Key
-    api_base: https://dashscope.aliyuncs.com/compatible-mode/v1 # 核心：阿里的兼容 OpenAI 接口地址
+    api_key: ${GRAPHRAG_API_KEY}
+    api_base: https://api.siliconflow.cn/v1
+    # ===============================================================
     retry:
       type: exponential_backoff
 
@@ -99,6 +98,7 @@ community_reports:
   text_prompt: "prompts/community_report_text.txt"
   max_length: 2000
   max_input_length: 8000
+  response_format: text
 
 snapshots:
   graphml: false

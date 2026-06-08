@@ -77,3 +77,5 @@ The response should be JSON formatted as follows:
         {{"description": "Description of point 2 [Data: Reports (report ids)]", "score": score_value}}
     ]
 }}
+
+All your responses and summaries MUST be written in Chinese (简体中文).
