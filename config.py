@@ -5,19 +5,21 @@ os.environ['NO_PROXY'] = 'api.siliconflow.cn'
 
 
 class Settings:
-    # 1. Neo4j 数据库配置
+    # 1. Neo4j 数据库配置 (对应你刚刚用 Docker 满配拉起的全新容器)
     NEO4J_URI: str = "bolt://localhost:7687"
     NEO4J_USER: str = "neo4j"
     NEO4J_PASSWORD: str = "12345678"
-    # 2. 硅基流动 Embedding 模型配置
-    SILICON_API_KEY: str = "sk-qbbgyitgrrdbnyaunuwuthezqtrslhtbjuhoukyotlojvjwr"
-    EMBEDDING_API_BASE: str = "https://api.siliconflow.cn/v1/embeddings"
-    EMBEDDING_MODEL: str = "BAAI/bge-m3"
 
-    # 3. 硅基流动 大语言模型（LLM）对话配置
-    # 这里我们选用更聪明的、适合做 GraphRAG 总结的 DeepSeek-V3 或者 R1
-    LLM_API_BASE: str = "https://api.siliconflow.cn/v1/chat/completions"
-    LLM_MODEL: str = "deepseek-ai/DeepSeek-V3"  # 也可以换成 deepseek-ai/DeepSeek-R1
+    # 2. 统一密钥
+    SILICON_API_KEY: str = "sk-qbbgyitgrrdbnyaunuwuthezqtrslhtbjuhoukyotlojvjwr"
+
+    # 3. 硅基流动 Embedding 模型配置 (💥 核心修正：砍掉末尾的 /embeddings)
+    EMBEDDING_API_BASE: str = "https://api.siliconflow.cn/v1"
+    EMBEDDING_MODEL: str = "BAAI/bge-m3"  # 严格对齐 settings.yaml
+
+    # 4. 硅基流动 大语言模型（LLM）配置 (💥 核心修正：砍掉末尾的 /chat/completions)
+    LLM_API_BASE: str = "https://api.siliconflow.cn/v1"
+    LLM_MODEL: str = "deepseek-ai/DeepSeek-V3"
 
 
 settings = Settings()

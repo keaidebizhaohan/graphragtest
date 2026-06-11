@@ -1,12 +1,20 @@
 [project]
 name = "graphragtest"
 version = "0.1.0"
-requires-python = ">=3.11"
+# 💥 核心修正：限定好支持的 Python 版本范围，别让 uv 跑去校验 3.14 了
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "fastapi>=0.136.3",
     "neo4j>=6.2.0",
-    "pandas>=3.0.3",
+    # 💥 核心修正①：把黄金面具扩展包正式写入项目账本！
+    "neo4j-graphrag[experimental]>=1.17.0",
+    # 💥 核心修正②：把 pandas 降到 2.x 正统高可用版本，彻底解除跟官方组件的死锁！
+    "pandas>=2.0.0,<3.0.0",
     "pyarrow>=24.0.0",
     "requests>=2.34.2",
     "uvicorn>=0.49.0",
+    # 💥 顺手把之前散落在外的 LangChain 组件也标准化锁进来
+    "langchain-neo4j>=0.1.0",
+    "langchain-openai>=0.1.0",
+    "langchain-experimental>=0.1.0"
 ]
