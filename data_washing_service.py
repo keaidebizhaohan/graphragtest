@@ -6,13 +6,14 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_core.documents import Document
 from config import settings
 
-# 💥 引入 Neo4j 官方最正统、核心库里雷打不动的标准 GraphRAG 管道组件
+# 💥 引入 Neo4j 官方最正统、核心库里雷打不动的标准 GraphRAG 认知与检索 API组件
 from neo4j_graphrag.generation import GraphRAG
 from neo4j_graphrag.llm import OpenAILLM
+from neo4j_graphrag.retrievers import VectorRetriever  # 👈 核心补齐：引入官方标准向量检索器
 
 
 # =================================================================
-# 纯正官方 API 驱动版 —— GraphRAG 自动化建图洗数微服务（核心库完全体）
+# 纯正官方 API 驱动版 —— GraphRAG 自动化建图洗数微服务（终极完满闭合版）
 # =================================================================
 class GraphRAGDataWashingService:
     def __init__(self):
@@ -84,39 +85,50 @@ class GraphRAGDataWashingService:
         # =================================================================
         # API 环节 ③：实体补全 —— 调用 API 全自动为库里所有实体打上独立向量
         # =================================================================
+        # =================================================================
+        # API 环节 ③：实体向量补全 —— 修正为读取 "id" 字段，强行灌满向量！
+        # =================================================================
         print("📥 环节 ③: 正在调 Vector API 跨界为现有 Entity 节点批量补齐向量属性...")
         try:
-            # 💥 只传参数！API 自动去库里捞 Entity，自动调 BGE 算向量，自动作为 embedding 属性存回实体内部！
+            # 💥 核心修正：把 text_node_properties 改为 ["id"]！让 BGE 直接拿实体名字去算向量！
             Neo4jVector.from_existing_graph(
                 embedding=self.embeddings,
                 url=settings.NEO4J_URI,
                 username=settings.NEO4J_USER,
                 password=settings.NEO4J_PASSWORD,
                 node_label="Entity",
-                text_node_properties=["description"],
+                text_node_properties=["id"],  # 👈 就是这行！改成 "id"，保证绝对有值，绝对能算出向量！
+                embedding_node_property="embedding",
                 index_name="entity_vector_index"
             )
             print("   └─ ✅ 库里所有实体（小韩、宇哥）的独立向量属性补齐完毕！")
         except Exception as e:
-            print(f"   └─ ⚠️ 实体向量补全略过: {e}")
+            print(f"   └─ ❌ 实体向量补全核心故障: {e}")
+            raise e
 
         # =================================================================
         # API 环节 ④：【正统收网】—— 声明官方标准的 GraphRAG 搜索上下文与大模型绑定
         # =================================================================
         print("📥 环节 ④: 正在初始化官方正统 GraphRAG 认知图谱上下文组件...")
         try:
-            # 包装官方格式的大模型驱动客户端
+            # 1. 包装官方格式的大模型驱动客户端
             neo4j_llm = OpenAILLM(
                 model_name=settings.LLM_MODEL,
-                model_config={
-                    "api_key": settings.SILICON_API_KEY,
-                    "base_url": settings.LLM_API_BASE
-                }
+                api_key=settings.SILICON_API_KEY,
+                base_url=settings.LLM_API_BASE
             )
 
-            # 💥 100% 官方标准高级语句：一句话直接交由官方核心组件，绑定点线、切片向量与大模型基座
+            # 2. 💥 核心修正：给官方 GraphRAG 实例化一个真正的 VectorRetriever 骨干！
+            # 传入图连接、刚刚建好的 1024 维索引名、以及匹配的标签，完美满足 Pydantic 的类型守卫
+            # 💥 核心修正：将 graph 改为 driver，并传入 self.graph._driver！
+            official_retriever = VectorRetriever(
+                driver=self.graph._driver,  # 👈 核心拿捏：直接解构出底层的原生 driver 驱动连接
+                index_name="text_unit_vector_index",
+            )
+
+            # 3. 100% 官方标准高级语句：将正统检索器注入组件，实现完美闭环
             grag_engine = GraphRAG(
-                retriever=None,  # 允许由 Neo4j 底层索引全动态代管
+                retriever=official_retriever,  # 👈 核心修正：塞入真正合法的 Retriever 实例！
                 llm=neo4j_llm
             )
             print("   └─ ✅ 纯正官方高级 API 认知链条（GraphRAG Engine）全线构筑完毕！")
