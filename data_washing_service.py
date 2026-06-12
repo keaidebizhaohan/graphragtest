@@ -97,24 +97,41 @@ class GraphRAGDataWashingService:
         print("   └─ ✅ 文本切片向量节点注入成功！")
 
         # =================================================================
-        # API 环节 ③：实体向量补全 —— 修正为读取 "id" 字段，强行灌满向量！
+        # 💥 API 环节 ③：实体向量补全 —— 抛弃黑盒 API，直接原生暴力灌库！
         # =================================================================
-        print("📥 环节 ③: 正在调 Vector API 跨界为现有 Entity 节点批量补齐向量属性...")
+        print("📥 环节 ③: 正在原生跨界为现有 Entity 节点批量强制补齐向量属性...")
         try:
-            # 💥 核心修正：把读取列改为实实在在拥有的 ["id"] 属性！
-            Neo4jVector.from_existing_graph(
-                embedding=self.embeddings,
-                url=settings.NEO4J_URI,
-                username=settings.NEO4J_USER,
-                password=settings.NEO4J_PASSWORD,
-                node_label="Entity",
-                text_node_properties=["id"],  # 👈 对齐拥有真实数据的 id 字段！
-                embedding_node_property="embedding",
-                index_name="entity_vector_index"
+            # 1. 物理打捞：写原生 Cypher，把库里所有没向量的实体连根拔起
+            records = self.graph.query(
+                "MATCH (e:Entity) WHERE e.embedding IS NULL AND e.id IS NOT NULL RETURN e.id AS text"
             )
-            print("   └─ ✅ 库里所有实体（小韩、宇哥）的独立向量属性补齐完毕！")
+
+            if records:
+                print(f"   └─ 🔍 扫描到 {len(records)} 个待补齐向量的实体裸节点，正在呼叫 BGE 算力...")
+                texts = [r["text"] for r in records]
+
+                # 2. 调用向量中台原生算力，一口气算出所有 1024 维的黄金大数组
+                vectors = self.embeddings.embed_documents(texts)
+
+                # 3. 物理回写：精准制导，把算好的大数组硬塞进节点的 embedding 属性里！
+                for text, vec in zip(texts, vectors):
+                    self.graph.query(
+                        "MATCH (e:Entity) WHERE e.id = $text SET e.embedding = $vec",
+                        params={"text": text, "vec": vec}
+                    )
+
+                # 4. 原生 DDL：强行焊死 1024 维货架
+                self.graph.query("""
+                        CREATE VECTOR INDEX entity_vector_index IF NOT EXISTS 
+                        FOR (e:Entity) ON (e.embedding) 
+                        OPTIONS {indexConfig: {`vector.dimensions`: 1024, `vector.similarity_function`: 'cosine'}}
+                        """)
+                print(f"   └─ ✅ 暴力破局成功！{len(records)} 个实体的 1024 维物理向量已全部实打实落盘！")
+            else:
+                print("   └─ ✅ 库内所有实体向量均已饱满，无需补齐。")
+
         except Exception as e:
-            print(f"   └─ ❌ 实体向量补全核心故障: {e}")
+            print(f"   └─ ❌ 实体向量原生打捞与回写故障: {e}")
             raise e
 
         # =================================================================
