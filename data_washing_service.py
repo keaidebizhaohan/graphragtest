@@ -6,10 +6,11 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_core.documents import Document
 from config import settings
 
-# 💥 引入 Neo4j 官方最正统、核心库里雷打不动的标准 GraphRAG 认知与检索 API组件
+# 💥 引入 Neo4j 官方标准 GraphRAG 认知与检索 API 组件
 from neo4j_graphrag.generation import GraphRAG
 from neo4j_graphrag.llm import OpenAILLM
-from neo4j_graphrag.retrievers import VectorRetriever  # 👈 核心补齐：引入官方标准向量检索器
+from neo4j_graphrag.retrievers import VectorRetriever
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 # =================================================================
@@ -45,14 +46,14 @@ class GraphRAGDataWashingService:
 
     def wash_es_data_to_neo4j(self, es_records: List[dict]):
         """
-        全量洗数流水线：100% 遵照领导指示，全量调用 Graph 官方高级 API 实现
+        全量洗数流水线：💥 修复了之前致命的缩进和嵌套错误！
         """
         if not es_records:
             return
 
         print("🚀 [纯正 API 流水线启动] 开始遵照官方标准构建多模态知识图谱...")
 
-        # 数据包装
+        # 1. 原始数据包装
         raw_documents = []
         for record in es_records:
             doc = Document(
@@ -62,19 +63,32 @@ class GraphRAGDataWashingService:
             raw_documents.append(doc)
 
         # =================================================================
-        # API 环节 ①：打地基 —— 调用 API 全自动提取实体、关系并连线
+        # 💥 环节 0：工业级智能文本切片 (Chunking) —— 彻底粉碎大长文本
         # =================================================================
-        print("📥 环节 ①: 正在调官方 Transformer API 盲抽实体网...")
-        graph_documents = self.graph_transformer.convert_to_graph_documents(raw_documents)
-        self.graph.add_graph_documents(graph_documents)
-        print("   └─ ✅ 实体关系网落库成功！")
+        print("✂️ 环节 0: 正在进行长文本智能切片...")
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=500,  # 每块切片保留 500 个字符的黄金长度
+            chunk_overlap=50  # 前后切片重叠 50 个字符
+        )
+        chunked_documents = text_splitter.split_documents(raw_documents)
+        print(f"   └─ ✅ 成功将 {len(raw_documents)} 篇长文切分为 {len(chunked_documents)} 个标准知识块！")
 
         # =================================================================
-        # API 环节 ②：向下兼容 —— 调用 API 全自动切片并打上文本向量
+        # API 环节 ①：打地基 —— 调用 API 自动化提取实体关系网并连线
+        # =================================================================
+        print("📥 环节 ①: 正在调官方 Transformer API 盲抽实体网...")
+        # 💥 严格传入切片后的 chunked_documents
+        graph_documents = self.graph_transformer.convert_to_graph_documents(chunked_documents)
+        self.graph.add_graph_documents(graph_documents)
+        print("   └─ ✅ 实体关系网（Entity/RELATED）落库成功！")
+
+        # =================================================================
+        # API 环节 ②：传统 RAG 兼容 —— 调用 API 全自动注入切片并打上文本向量
         # =================================================================
         print("📥 环节 ②: 正在调 Vector API 注入 __TextUnit__ 传统 RAG 货架...")
+        # 💥 严格传入切片后的 chunked_documents，让它生成多个带有真实向量的物理切片节点！
         Neo4jVector.from_documents(
-            documents=raw_documents,
+            documents=chunked_documents,
             embedding=self.embeddings,
             graph=self.graph,
             index_name="text_unit_vector_index",
@@ -83,21 +97,18 @@ class GraphRAGDataWashingService:
         print("   └─ ✅ 文本切片向量节点注入成功！")
 
         # =================================================================
-        # API 环节 ③：实体补全 —— 调用 API 全自动为库里所有实体打上独立向量
-        # =================================================================
-        # =================================================================
         # API 环节 ③：实体向量补全 —— 修正为读取 "id" 字段，强行灌满向量！
         # =================================================================
         print("📥 环节 ③: 正在调 Vector API 跨界为现有 Entity 节点批量补齐向量属性...")
         try:
-            # 💥 核心修正：把 text_node_properties 改为 ["id"]！让 BGE 直接拿实体名字去算向量！
+            # 💥 核心修正：把读取列改为实实在在拥有的 ["id"] 属性！
             Neo4jVector.from_existing_graph(
                 embedding=self.embeddings,
                 url=settings.NEO4J_URI,
                 username=settings.NEO4J_USER,
                 password=settings.NEO4J_PASSWORD,
                 node_label="Entity",
-                text_node_properties=["id"],  # 👈 就是这行！改成 "id"，保证绝对有值，绝对能算出向量！
+                text_node_properties=["id"],  # 👈 对齐拥有真实数据的 id 字段！
                 embedding_node_property="embedding",
                 index_name="entity_vector_index"
             )
@@ -111,28 +122,21 @@ class GraphRAGDataWashingService:
         # =================================================================
         print("📥 环节 ④: 正在初始化官方正统 GraphRAG 认知图谱上下文组件...")
         try:
-            # 1. 包装官方格式的大模型驱动客户端
             neo4j_llm = OpenAILLM(
                 model_name=settings.LLM_MODEL,
                 api_key=settings.SILICON_API_KEY,
                 base_url=settings.LLM_API_BASE
             )
-
-            # 2. 💥 核心修正：给官方 GraphRAG 实例化一个真正的 VectorRetriever 骨干！
-            # 传入图连接、刚刚建好的 1024 维索引名、以及匹配的标签，完美满足 Pydantic 的类型守卫
-            # 💥 核心修正：将 graph 改为 driver，并传入 self.graph._driver！
+            # 引入官方标准的 VectorRetriever 作为骨架
             official_retriever = VectorRetriever(
-                driver=self.graph._driver,  # 👈 核心拿捏：直接解构出底层的原生 driver 驱动连接
-                index_name="text_unit_vector_index",
+                driver=self.graph._driver,
+                index_name="text_unit_vector_index"
             )
-
-            # 3. 100% 官方标准高级语句：将正统检索器注入组件，实现完美闭环
             grag_engine = GraphRAG(
-                retriever=official_retriever,  # 👈 核心修正：塞入真正合法的 Retriever 实例！
+                retriever=official_retriever,
                 llm=neo4j_llm
             )
             print("   └─ ✅ 纯正官方高级 API 认知链条（GraphRAG Engine）全线构筑完毕！")
-
         except Exception as e:
             print(f"   └─ ❌ 官方基础 API 组件绑定失败: {e}")
             raise e

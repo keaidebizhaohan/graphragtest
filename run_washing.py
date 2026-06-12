@@ -87,13 +87,15 @@ class GraphRAGDataWashingService:
         print("📥 环节 ③: 正在调 Vector API 跨界为现有 Entity 节点批量补齐向量属性...")
         try:
             # 💥 纯正参数化驱动：API 自动扫描全图 Entity，自动调用 BGE 算向量并存回实体内部！
+            # 环节 ③ 修改为：
             Neo4jVector.from_existing_graph(
                 embedding=self.embeddings,
                 url=settings.NEO4J_URI,
                 username=settings.NEO4J_USER,
                 password=settings.NEO4J_PASSWORD,
                 node_label="Entity",
-                text_node_properties=["description"],
+                text_node_properties=["id"],  # 💥 必须改成 "id"，保证它有文本可以算向量！
+                embedding_node_property="embedding",  # 💥 显式指定向量存到 embedding 这个属性里
                 index_name="entity_vector_index"
             )
             print("   └─ ✅ 库里所有实体（小韩、宇哥）的独立向量属性补齐完毕！")
