@@ -11,6 +11,8 @@ from neo4j_graphrag.generation import GraphRAG
 from neo4j_graphrag.llm import OpenAILLM
 from neo4j_graphrag.retrievers import VectorRetriever
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from graphdatascience import GraphDataScience
+import pandas as pd
 
 
 # =================================================================
@@ -36,6 +38,12 @@ class GraphRAGDataWashingService:
             password=settings.NEO4J_PASSWORD
         )
         self.graph_transformer = LLMGraphTransformer(llm=self.llm)
+
+        # 💥 初始化原生 GDS Python 客户端
+        self.gds = GraphDataScience(
+            settings.NEO4J_URI,
+            auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD)
+        )
 
     def wash_es_data_to_neo4j(self, es_records: List[dict]):
         if not es_records:
@@ -66,7 +74,6 @@ class GraphRAGDataWashingService:
         print("📥 环节 ①: 正在调官方 Transformer API 盲抽实体网...")
         graph_documents = self.graph_transformer.convert_to_graph_documents(chunked_documents)
 
-        # 💥 核心替换：直接利用 API 的 baseEntityLabel=True 参数，底层自动为所有节点打上 __Entity__ 标签！
         # 彻底消灭了那句 SET n:Entity 的原生 Cypher！
         self.graph.add_graph_documents(graph_documents, baseEntityLabel=True)
         print("   └─ ✅ 实体关系网落库成功，并已由 API 自动打上统一 __Entity__ 标签！")
@@ -89,8 +96,7 @@ class GraphRAGDataWashingService:
         # =================================================================
         print("📥 环节 2.5: 正在建立切片与实体之间的物理桥梁 (Entity Linking)...")
         try:
-            # 执行底层 JOIN，把切片和实体死死焊在一起
-            # 注意：咱们上面用了 baseEntityLabel=True，所以这里的表名叫 __Entity__
+            # 这里的轻量 Cypher 是必须的胶水层，用来做精准的字符串包含匹配
             result = self.graph.query("""
                         MATCH (t:__TextUnit__), (e:__Entity__)
                         WHERE t.text CONTAINS e.id
@@ -103,83 +109,172 @@ class GraphRAGDataWashingService:
             print(f"   └─ ❌ 物理牵线失败: {e}")
 
         # =================================================================
-        # 💥 新增环节 3.5：宏观社区聚合与社区报告全自动预制落盘 (纯 API 写入版)
+        # 环节 3.5：宏观社区聚合与预制报告 (Leiden + GDS)
+        # 必须与环节 2.5 同级缩进；写在 2.5 的 except 里时，链接成功则整段不执行。
         # =================================================================
-        print("📥 环节 3.5: 正在启动图谱宏观社区聚类，并由大模型预先生成社区白皮书报告...")
+        print("�� 环节 3.5: 正在启动官方 GDS 引擎进行全图宏观社区聚类...")
+        G = None
         try:
-            # 1. 物理读取：基于连线将实体按来源归类为“社区” (只读查询获取拓扑结构)
-            community_data = self.graph.query("""
-                MATCH (t:__TextUnit__)-[:HAS_ENTITY]->(e:__Entity__)
-                RETURN id(t) AS community_id, collect(e.id) AS entity_ids, t.text AS context_text
-            """)
+            try:
+                if self.gds.graph.exists("community_graph").exists:
+                    self.gds.graph.drop("community_graph")
+            except Exception:
+                pass
 
-            if community_data:
-                print(f"   └─ 👥 成功划分出 {len(community_data)} 个宏观语义社区，正在并发呼叫大模型编写白皮书...")
-
-                report_docs = []  # 用于收集所有报告对象的列表
-
-                for comm in community_data:
-                    comm_id = comm["community_id"]
-                    entity_ids = list(set(comm["entity_ids"]))
-                    context_text = comm["context_text"]
-
-                    # 2. 动态拼装大模型 Prompt
-                    report_prompt = f"""
-                    你是一个精通系统架构与组织关系的宏观战略分析师。
-                    请为以下知识图谱中的一个特定【实体社区/圈子】撰写一份结构化的【社区宏观总结白皮书】。
-
-                    【本社区包含的实体名单】: {", ".join(entity_ids)}
-                    【本社区的原始上下文线索】:
-                    {context_text}
-
-                    请直接输出报告正文，包含【社区主题】和【核心概要】，不要废话。
-                    """
-
-                    # 3. 呼叫大模型算力生成纯文本报告
-                    response = self.llm.invoke(report_prompt)
-                    report_content = response.content
-
-                    # 4. 核心 API 封装：将纯文本报告包装为 LangChain 标准的 Document 对象！
-                    # 我们把圈子里的实体名单存在 metadata 里，完全替代复杂的图谱写连线
-                    doc = Document(
-                        page_content=report_content,
-                        metadata={
-                            "community_id": str(comm_id),
-                            "entities_involved": ", ".join(entity_ids)
-                        }
-                    )
-                    report_docs.append(doc)
-
-                # 5. 【终极 API 绝杀】直接调用官方 API，一句话包办：算向量、创建节点、全自动建专属向量索引！
-                if report_docs:
-                    Neo4jVector.from_documents(
-                        documents=report_docs,
-                        embedding=self.embeddings,
-                        graph=self.graph,
-                        index_name="community_report_index",
-                        node_label="__CommunityReport__"
-                    )
-                print(f"   └─ ✅ {len(report_docs)} 份宏观社区报告全部硬落盘！专属向量索引已由 API 全自动创建完毕！")
+            entity_count = self.graph.query(
+                "MATCH (e:__Entity__) RETURN count(e) AS c"
+            )[0]["c"]
+            if entity_count < 2:
+                print(
+                    f"   └─ ⚠️ 实体仅 {entity_count} 个，跳过 Leiden 与社区报告。"
+                )
             else:
-                print("   └─ ⚠️ 未找到可聚合的社区，请检查环节 2.5 是否成功关联。")
+                co = self.graph.query(
+                    """
+                    MATCH (t:__TextUnit__)-[:HAS_ENTITY]->(e1:__Entity__),
+                          (t)-[:HAS_ENTITY]->(e2:__Entity__)
+                    WHERE elementId(e1) < elementId(e2)
+                    MERGE (e1)-[r:CO_OCCURS_IN_UNIT]->(e2)
+                    RETURN count(r) AS c
+                    """
+                )
+                co_count = co[0]["c"] if co else 0
+                print(
+                    f"   └─ 🔗 共现边 CO_OCCURS_IN_UNIT 就绪（本批 {co_count} 条）"
+                )
+
+                rel_types = self.graph.query(
+                    "MATCH (:__Entity__)-[r]->(:__Entity__) "
+                    "RETURN DISTINCT type(r) AS rel_type"
+                )
+                rel_projection = {
+                    row["rel_type"]: {"orientation": "UNDIRECTED"}
+                    for row in rel_types
+                }
+                if not rel_projection:
+                    print(
+                        "   └─ ⚠️ 仍无 __Entity__→__Entity__ 关系，无法 GDS 投影，跳过社区报告。"
+                    )
+                else:
+                    G, _ = self.gds.graph.project(
+                        "community_graph",
+                        "__Entity__",
+                        rel_projection,
+                    )
+                    print(
+                        f"   └─ 📊 GDS 投影: {G.node_count()} 节点, "
+                        f"{G.relationship_count()} 条无向边"
+                    )
+
+                    community_df = self.gds.leiden.stream(G)
+                    nodes = self.gds.util.asNodes(
+                        community_df["nodeId"].to_list()
+                    )
+                    community_df["entity_name"] = [
+                        node.get("id") or node.get("name") for node in nodes
+                    ]
+
+                    grouped_communities = (
+                        community_df.groupby("communityId")["entity_name"]
+                        .apply(list)
+                        .reset_index()
+                    )
+                    multi = grouped_communities[
+                        grouped_communities["entity_name"].apply(len) >= 2
+                    ]
+                    print(
+                        f"   └─ �� Leiden 共 {len(grouped_communities)} 个社区，"
+                        f"≥2 实体的 {len(multi)} 个，正在生成报告..."
+                    )
+
+                    text_vector_store = Neo4jVector.from_existing_index(
+                        embedding=self.embeddings,
+                        url=settings.NEO4J_URI,
+                        username=settings.NEO4J_USER,
+                        password=settings.NEO4J_PASSWORD,
+                        index_name="text_unit_vector_index",
+                        text_node_property="text",
+                    )
+
+                    report_docs = []
+                    for _, row in multi.iterrows():
+                        comm_id = row["communityId"]
+                        entity_list = [
+                            str(x) for x in row["entity_name"] if x
+                        ]
+                        if len(entity_list) < 2:
+                            continue
+
+                        search_query = " ".join(entity_list)
+                        context_docs = text_vector_store.similarity_search(
+                            search_query, k=5
+                        )
+                        context_text = "\n".join(
+                            d.page_content for d in context_docs
+                        )
+
+                        report_prompt = f"""
+你是一个精通系统架构与组织关系的宏观战略分析师。
+请为以下知识图谱中的一个特定【实体社区/圈子】撰写一份结构化的【社区宏观总结白皮书】。
+
+【本社区包含的核心实体名单】: {", ".join(entity_list)}
+【本社区的背景知识参考】:
+{context_text}
+
+请直接输出报告正文，包含【社区主题】和【核心概要】，不要废话。
+"""
+                        response = self.llm.invoke(report_prompt)
+                        report_docs.append(
+                            Document(
+                                page_content=response.content,
+                                metadata={
+                                    "community_id": str(comm_id),
+                                    "entities_involved": ", ".join(
+                                        entity_list
+                                    ),
+                                },
+                            )
+                        )
+
+                    if report_docs:
+                        Neo4jVector.from_documents(
+                            documents=report_docs,
+                            embedding=self.embeddings,
+                            graph=self.graph,
+                            index_name="community_report_index",
+                            node_label="__CommunityReport__",
+                        )
+                        print(
+                            f"   └─ ✅ {len(report_docs)} 份社区报告已写入 "
+                            "__CommunityReport__"
+                        )
+                    else:
+                        print(
+                            "   └─ ⚠️ 未生成报告（社区均 <2 实体或实体名为空）。"
+                        )
 
         except Exception as e:
-            print(f"   └─ ❌ 社区报告预生成 API 核心故障: {e}")
-            raise e
+            print(f"   └─ ❌ 官方 GDS 社区聚类故障: {e}")
+            raise
+        finally:
+            if G is not None:
+                try:
+                    self.gds.graph.drop(G)
+                except Exception:
+                    pass
 
         # =================================================================
         # 💥 API 环节 ③：实体向量补全 —— 回归官方高阶 API！
         # =================================================================
         print("📥 环节 ③: 正在调 Vector API 跨界为现有 Entity 节点批量补齐向量属性...")
         try:
-            # 既然环节 ① 已经用 API 打好了 __Entity__ 标签，我们直接呼叫官方高级 API，一行代码包办算向量和建索引！
             Neo4jVector.from_existing_graph(
                 embedding=self.embeddings,
                 url=settings.NEO4J_URI,
                 username=settings.NEO4J_USER,
                 password=settings.NEO4J_PASSWORD,
-                node_label="__Entity__",  # 👈 自动识别环节 ① 打好的 __Entity__ 标签
-                text_node_properties=["id"],  # 👈 提取实体 id 去算向量
+                node_label="__Entity__",
+                text_node_properties=["id"],
                 embedding_node_property="embedding",
                 index_name="entity_vector_index"
             )
@@ -211,4 +306,4 @@ class GraphRAGDataWashingService:
             print(f"   └─ ❌ 官方基础 API 组件绑定失败: {e}")
             raise e
 
-        print("\n🎉 🎉 🎉 [纯 API + 预制报告架构方案 全面通关] 🎉 🎉 🎉")
+        print("\n🎉 🎉 🎉 [纯 API + GDS 宏观社区架构方案 全面通关] 🎉 🎉 🎉")
